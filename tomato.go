@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -20,10 +21,10 @@ var (
 	StatePaused  = "[P]"
 	StateRunning = "[R]"
 
-	SepColon = ':'
-	SepBreak = 'ː'
+	SepColon = ":"
+	SepBreak = "ː"
+	N        = 4
 
-	N                  int
 	DurationWork       time.Duration
 	DurationShortBreak time.Duration
 	DurationLongBreak  time.Duration
@@ -41,7 +42,7 @@ func (mode Mode) Duration() time.Duration {
 	panic("Unexpected")
 }
 
-func (mode Mode) Sep() rune {
+func (mode Mode) Sep() string {
 	switch mode {
 	case ModeWork:
 		return SepColon
@@ -93,7 +94,11 @@ func (s *Server) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.updateStatus()
-	fmt.Fprint(w, s.formatStatus())
+	if r.Header.Get("Accept") == "application/json" {
+		w.Write(s.formatStatusJSON())
+	} else {
+		fmt.Fprint(w, s.formatStatus())
+	}
 }
 
 func (s *Server) Time(w http.ResponseWriter, r *http.Request) {
@@ -186,10 +191,8 @@ func (s *Server) nextMode() {
 		} else {
 			s.mode = ModeLongBreak
 		}
-
-	default:
-		panic("Unexpected")
 	}
+	panic("Unexpected")
 }
 
 func (s *Server) updateStatus() {
@@ -201,6 +204,17 @@ func (s *Server) updateStatus() {
 		}
 	}
 	log.Print(s.formatStatus())
+}
+
+func (s *Server) formatStatusJSON() []byte {
+	data, _ := json.Marshal(map[string]interface{}{
+		"mode":  s.mode,
+		"state": s.state,
+		"timer": s.formatTimer(),
+		"i":     s.count,
+		"n":     N,
+	})
+	return data
 }
 
 func (s *Server) formatStatus() string {
@@ -219,7 +233,7 @@ func (s *Server) formatTimer() string {
 	panic("Unexpected")
 }
 
-func formatTimer(d time.Duration, sep rune) string {
+func formatTimer(d time.Duration, sep string) string {
 	if d < 0 {
 		d = 0
 	}
@@ -229,7 +243,7 @@ func formatTimer(d time.Duration, sep rune) string {
 		m = 99
 	}
 
-	return fmt.Sprintf("%02d%c%02d", m, sep, s)
+	return fmt.Sprintf("%02d%s%02d", m, sep, s)
 }
 
 func parseDuration(s string) time.Duration {
@@ -257,13 +271,17 @@ func parseDuration(s string) time.Duration {
 
 func main() {
 	flListen := flag.String("listen", ":12321", "Address to listen on")
-	flN := flag.Int("n", 3, "Number of intervals between long break")
+
+	flag.IntVar(&N, "n", N, "Number of intervals between long break")
+	flag.StringVar(&SepColon, "colon", SepColon, "Custom separator")
+	flag.StringVar(&SepBreak, "colon-alt", SepBreak, "Alternative separator for break modes")
+
 	flDurationWork := flag.String("work", "25m", "Work interval")
 	flDurationShortBreak := flag.String("short", "5m", "Short break interval")
 	flDurationLongBreak := flag.String("long", "15m", "Long break interval")
+
 	flag.Parse()
 
-	N = *flN
 	if N <= 0 || N >= 10 {
 		log.Fatalf("Invalid number of intervals (%v)", N)
 	}
