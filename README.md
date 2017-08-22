@@ -64,7 +64,7 @@ curl -H "Accept: application/json" http://localhost:12321/status
 ```
 
 ```
-{"c":0,"mode":"work","n":4,"state":"[S]","timer":"25:00"}
+{"i":0,"mode":"work","n":4,"state":"[S]","timer":"25:00"}
 ```
 
 ## AppleScript
