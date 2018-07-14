@@ -2,7 +2,7 @@
 
 Tomato is a command for running [pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) in background. It's designed mainly to stay in MacBook touchbar.
 
-For example, my touchbar looks like below:
+For example, my touchbar looks like this:
 
 ##### 1. Start
 
@@ -32,14 +32,33 @@ For example, my touchbar looks like below:
 
 ## Quick Start
 
-1. Install [Go](https://golang.org/doc/install)
-2. `go build tomato.go`
-3. Put the command `tomato` in your $PATH
-4. Start the `tomato` server. It will listen on `:12321` by default.
-5. Config touchbar buttons with these Apple scripts:
+1. Download the [prebuilt command](others/tomato) or [build from source](#build-from-source).
+
+2. Config BetterTouchTool as this screenshot (`port=12345`). Don't forget to click **Apply Changes**.
+
+    ![](others/btt-settings.png)
+
+3. Config touchbar buttons with these Apple scripts:
     - **Polling**: Display information on the first button.
     - **Start/Pause**: Run when the first button is tapped.
     - **Stop/Switch Mode**: Run when the second button is tapped.
+
+    Or copy config for [the widget](https://raw.githubusercontent.com/ng-vu/tomato/master/others/btt-widget.json) and [the button](https://raw.githubusercontent.com/ng-vu/tomato/master/others/btt-button.json) then press `Command+V` inside BetterTouchTool.
+
+4. Copy `UUID` of the widget
+
+    ![](others/btt-uuid.png)
+
+4. Start the `tomato` server. It will listen on `:12321` by default.
+
+    ```
+    tomato -uuid=[UUID] -port=12345 -icon1=red.png -icon2=green.png
+    ```
+
+## Build from source
+
+1. Install [Go](https://golang.org/doc/install)
+2. `go build tomato.go`
 
 ## API
 
@@ -47,8 +66,8 @@ For example, my touchbar looks like below:
 |---------------------------------------------|-----------------------------|-----------
 | GET [/status](http://localhost:12321/status)| `[R] 17:43 1/3 work`        | Current status
 | GET [/time](http://localhost:12321/time)    | `17:43`                     | Current timer
-| POST /action/start                          | `[R] 17:43 1/3 work`        | Start/pause the current interval.
-| POST /action/stop                           | `[S] 25:00 1/3 short-break` | Stop the current interval or switch mode.
+| POST /action/start                          | `17:43`        | Start/pause the current interval.
+| POST /action/stop                           | `25:00` | Stop the current interval or switch mode.
 
 ### Output
 
@@ -73,10 +92,10 @@ curl -H "Accept: application/json" http://localhost:12321/status
 
 ```applescript
 try
-	set reqURL to "http://localhost:12321/time"
-	do shell script "curl " & quoted form of reqURL
+    set reqURL to "http://localhost:12321/time"
+    do shell script "curl " & quoted form of reqURL
 on error
-	return "00:00"
+    return "00:00"
 end try
 ```
 
@@ -84,8 +103,8 @@ end try
 
 ```applescript
 try
-	set reqURL to "http://localhost:12321/action/start"
-	do shell script "curl -X POST " & quoted form of reqURL
+    set reqURL to "http://localhost:12321/action/start"
+    do shell script "curl -X POST " & quoted form of reqURL
 end try
 ```
 
@@ -93,14 +112,14 @@ end try
 
 ```applescript
 try
-	set reqURL to "http://localhost:12321/action/stop"
-	do shell script "curl -X POST " & quoted form of reqURL
+    set reqURL to "http://localhost:12321/action/stop"
+    do shell script "curl -X POST " & quoted form of reqURL
 end try
 ```
 
 ## Notes
 
-- [BetterTouchTool](https://www.boastr.net/) to customize the touchbar. It's an awesome app! Also detect `:` and `ː` to display red or green icon.
+- [BetterTouchTool](https://www.boastr.net/) to customize the touchbar. It's an awesome app!
 - [Automator](https://stackoverflow.com/questions/6442364/running-script-upon-login-mac) to start the script at login.
 
 # License
