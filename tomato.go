@@ -403,13 +403,16 @@ func mustLoadIcon(filename string) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-var lastText string
+var lastText, lastIcon string
 
 func doRequest(text string, iconData string) error {
-	if text == lastText {
+	if text == lastText && iconData == lastIcon {
 		return nil
 	}
-	lastText = text
+	defer func() {
+		lastText = text
+		lastIcon = iconData
+	}()
 
 	u, err := url.Parse(URL)
 	if err != nil {
@@ -418,7 +421,9 @@ func doRequest(text string, iconData string) error {
 	q := u.Query()
 	q.Set("uuid", UUID)
 	q.Set("text", text)
-	q.Set("icon_data", iconData)
+	if iconData != lastIcon {
+		q.Set("icon_data", iconData)
+	}
 	u.RawQuery = q.Encode()
 
 	resp, err := httpClient.Get(u.String())
