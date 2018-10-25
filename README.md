@@ -34,6 +34,8 @@ For example, my touchbar looks like this:
 
 1. Download the [prebuilt command](others/tomato) or [build from source](#build-from-source).
 
+    You may need to run `chmod +x tomato` and put it in your `$PATH`.
+
 2. Config BetterTouchTool as this screenshot (`port=12345`). Don't forget to click **Apply Changes**.
 
     ![](others/btt-settings.png)
@@ -49,16 +51,69 @@ For example, my touchbar looks like this:
 
     ![](others/btt-uuid.png)
 
-4. Start the `tomato` server. It will listen on `:12321` by default.
+5. Start the `tomato` server. It will listen on `:12321` by default.
 
     ```
-    tomato -uuid=[UUID] -port=12345 -icon1=red.png -icon2=green.png
+    tomato -uuid=[UUID] -port=12345
     ```
+    
+    If you have trouble running the command, see [this issue](https://github.com/ng-vu/tomato/issues/2).
+
+## Usage
+
+```
+Tomato on TouchBar v1.2.0 (works with BetterTouchTool)
+
+Default:
+   tomato
+
+With options:
+   tomato -n=3 -colon=: -work=25m -short=300s -long=15m -listen=:12321
+
+Send updates to BetterTouchTool:
+   tomato -uuid=UUID -port=12345
+   tomato -icon1=PATH_ICON1 -icon2=PATH_ICON2 -uuid=UUID -url=http://127.0.0.1:12345/update_touch_bar_widget/
+
+Execute a command at the end of timer:
+   tomato -command="terminal-notifier -title Pomodoro -message \"Hey, time is over\!\" -sound default"
+
+Options:
+  -async
+    	Execute the command without waiting it to finish (use together with -command)
+  -colon string
+    	Custom separator (default ":")
+  -colon-alt string
+    	Alternative separator for break modes (default ":")
+  -command string
+    	Execute command at the end of timer
+  -icon1 string
+    	Icon for work (default red)
+  -icon2 string
+    	Icon for break session (default green)
+  -listen string
+    	Address to listen on (default ":12321")
+  -long string
+    	Long break interval (default "15m")
+  -n int
+    	Number of intervals between long break (default 4)
+  -port string
+    	BetterTouchTool port
+  -short string
+    	Short break interval (default "5m")
+  -tick int
+    	Duration in ms for sending updates (default 100) (default 100)
+  -url string
+    	URL to post update
+  -uuid string
+    	UUID of the widget
+  -work string
+    	Work interval (default "25m")
+```
 
 ## Build from source
 
 1. Install [Go](https://golang.org/doc/install)
-2. `go build tomato.go`
+2. `go build *.go`
 
 ## API
 

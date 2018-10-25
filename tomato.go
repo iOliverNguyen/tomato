@@ -1,5 +1,7 @@
 package main
 
+//go:generate go-bindata -o zbindata.go red.png green.png
+
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -14,8 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 )
+
+const version = "v1.2.0"
 
 var (
 	ModeWork       Mode = "work"
@@ -37,30 +40,31 @@ var (
 	Icon1, Icon2, UUID, URL string
 	Icon1Data, Icon2Data    string
 	Command                 string
+	CommandAsync            bool
 
 	httpClient = http.Client{Timeout: 200 * time.Millisecond}
 )
 
 func main() {
 	flag.Usage = func() {
-		fmt.Println(`Tomato on TouchBar (works with BetterTouchTool)
+		fmt.Printf(`Tomato on TouchBar %v (works with BetterTouchTool)
 
 Default:
-	tomato
+   tomato
 
 With options:
-	tomato -n=3 -colon=: -short=300s -long=15m -listen=:12321
+   tomato -n=3 -colon=: -work=25m -short=300s -long=15m -listen=:12321
 
 Send updates to BetterTouchTool:
-	tomato -icon1=PATH_ICON1 -icon2=PATH_ICON2 -uuid=UUID -port=12345
-	tomato -icon1=PATH_ICON1 -icon2=PATH_ICON2 -uuid=UUID -url=http://127.0.0.1:12345/update_touch_bar_widget/
+   tomato -uuid=UUID -port=12345
+   tomato -icon1=PATH_ICON1 -icon2=PATH_ICON2 -uuid=UUID -url=http://127.0.0.1:12345/update_touch_bar_widget/
 
-Execute a command at end of timer
-	tomato -command="terminal-notifier -title Pomodoro -message \"Hey, time is over!\" -sound default"
+Execute a command at the end of timer:
+   tomato -command="terminal-notifier -title Pomodoro -message \"Hey, time is over\!\" -sound default"
 
 Options:
-	-tick      Duration in ms for updating timer (default 100)
-`)
+`, version)
+		flag.PrintDefaults()
 	}
 
 	flListen := flag.String("listen", ":12321", "Address to listen on")
@@ -68,10 +72,11 @@ Options:
 	flag.IntVar(&N, "n", N, "Number of intervals between long break")
 	flag.StringVar(&SepColon, "colon", SepColon, "Custom separator")
 	flag.StringVar(&SepBreak, "colon-alt", SepBreak, "Alternative separator for break modes")
-	flag.StringVar(&Icon1, "icon1", "", "Icon for work session")
-	flag.StringVar(&Icon2, "icon2", "", "Icon for break session")
-	flag.StringVar(&Command, "command", "", "Execute command at end")
+	flag.StringVar(&Icon1, "icon1", "", "Icon for work (default red)")
+	flag.StringVar(&Icon2, "icon2", "", "Icon for break session (default green)")
+	flag.StringVar(&Command, "command", "", "Execute command at the end of timer")
 	flag.StringVar(&UUID, "uuid", "", "UUID of the widget")
+	flag.BoolVar(&CommandAsync, "async", false, "Execute the command without waiting it to finish (use together with -command)")
 
 	flDurationWork := flag.String("work", "25m", "Work interval")
 	flDurationShortBreak := flag.String("short", "5m", "Short break interval")
@@ -82,6 +87,9 @@ Options:
 
 	flag.Parse()
 
+	if *flTicker <= 10 || *flTicker >= 1000 {
+		fatalf("Invalid ticker value (must between 10 and 1000)")
+	}
 	if N <= 0 || N >= 10 {
 		fatalf("Invalid number of intervals (%v)", N)
 	}
@@ -93,32 +101,26 @@ Options:
 	switch {
 	case *flURL != "" && *flPort != "":
 		fatalf("-port and -url can not be used together")
+	case (*flPort != "") != (UUID != ""):
+		fatalf("-port and -uuid must be used together")
 	case *flURL != "":
 		URL = *flURL
 		if _, err := url.Parse(URL); err != nil {
 			fatalf("Unable to parse url: %v", err)
 		}
+		log.Println("Send update every %vms to URL: %v", *flTicker, URL)
 	case *flPort != "":
 		URL = fmt.Sprintf("http://127.0.0.1:%v/update_touch_bar_widget/", *flPort)
+		log.Printf("Send update every %vms to BetterTouchTool running at :%v with uuid=%v", *flTicker, *flPort, UUID)
 	}
 
-	switch {
-	case Icon1 == "" && Icon2 == "" && UUID == "" && URL == "":
-		// skip
-	case Icon1 != "" && Icon2 != "" && UUID != "" && URL != "":
-		Icon1Data = mustLoadIcon(Icon1)
-		Icon2Data = mustLoadIcon(Icon2)
+	if URL != "" {
+		Icon1Data = mustLoadIcon(Icon1, "red.png")
+		Icon2Data = mustLoadIcon(Icon2, "green.png")
 		err := doRequest(formatTimer(DurationWork, SepColon), Icon1Data)
 		if err != nil {
 			fatalf("Error while sending request to %v: %v", URL, err)
 		}
-		if *flTicker <= 10 || *flTicker >= 1000 {
-			fatalf("Invalid ticker value (must between 10 and 1000)")
-		}
-		log.Printf("Sent request with uuid=%v every %sms", UUID, *flTicker)
-
-	default:
-		fatalf("Must provide all -icon1, -icon2, -uuid, -port (or -url) to call BetterTouchTool")
 	}
 
 	s := NewServer()
@@ -129,6 +131,13 @@ Options:
 		}
 	}()
 
+	if Command != "" {
+		async := ""
+		if CommandAsync {
+			async = " (without waiting it to finish)"
+		}
+		log.Printf("Command to run at the end of timer%v: %q\n", async, Command)
+	}
 	log.Printf("Server listen at %v", *flListen)
 	err := http.ListenAndServe(*flListen, s.Handler())
 	log.Fatal(err)
@@ -190,7 +199,7 @@ func (s *Server) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprint(w, "Tomato 1.1.0\n")
+	fmt.Fprintf(w, "Tomato %v\n", version)
 }
 
 func (s *Server) Status(w http.ResponseWriter, r *http.Request) {
@@ -306,31 +315,41 @@ func (s *Server) executeCommand() {
 		return
 	}
 
-	lastQuote := rune(0)
-	f := func(c rune) bool {
-		switch {
-		case c == lastQuote:
-			lastQuote = rune(0)
-			return false
-		case lastQuote != rune(0):
-			return false
-		case unicode.In(c, unicode.Quotation_Mark):
-			lastQuote = c
-			return false
-		default:
-			return unicode.IsSpace(c)
+	cmd := exec.Command("/bin/sh", "-c", Command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	var err error
+	if CommandAsync {
+		log.Println("Executing command (without waiting it to finish)...")
+		err = cmd.Start()
+		if err == nil {
+			go func() {
+				err2 := cmd.Wait()
+				if err2 != nil {
+					printCommandError(err)
+				} else {
+					log.Println("Command executed")
+				}
+			}()
+		}
+	} else {
+		err = cmd.Run()
+		if err == nil {
+			log.Println("Command executed")
 		}
 	}
-
-	parts := strings.FieldsFunc(Command, f)
-	cmd := exec.Command(parts[0], parts[1:]...)
-	err := cmd.Run()
-
 	if err != nil {
-		log.Println("Failed to execute command at end of timer")
-		log.Printf("%s", err)
-	} else {
-		log.Println("Command executed")
+		printCommandError(err)
+	}
+}
+
+func printCommandError(err error) {
+	log.Println("Failed to execute command at end of timer:", err)
+
+	if strings.Contains(err.Error(), "exit status 127") &&
+		strings.Contains(Command, "terminal-notifier") {
+		log.Println("Note: You may need to download terminal-notifier at https://github.com/julienXX/terminal-notifier")
 	}
 }
 
@@ -437,10 +456,19 @@ func parseDuration(s string) time.Duration {
 	return time.Duration(i) * unit
 }
 
-func mustLoadIcon(filename string) string {
-	data, err := ioutil.ReadFile(filename)
+func mustLoad(data []byte, err error) []byte {
 	if err != nil {
-		fatalf("Unable to load icon1: %v", err)
+		fatalf("Unable to load icon: %v", err)
+	}
+	return data
+}
+
+func mustLoadIcon(filename, defaultIcon string) string {
+	var data []byte
+	if filename == "" {
+		data = mustLoad(Asset(defaultIcon))
+	} else {
+		data = mustLoad(ioutil.ReadFile(filename))
 	}
 	return base64.StdEncoding.EncodeToString(data)
 }
@@ -463,9 +491,7 @@ func doRequest(text string, iconData string) error {
 	q := u.Query()
 	q.Set("uuid", UUID)
 	q.Set("text", text)
-	if iconData != lastIcon {
-		q.Set("icon_data", iconData)
-	}
+	q.Set("icon_data", iconData)
 	u.RawQuery = q.Encode()
 
 	resp, err := httpClient.Get(u.String())
