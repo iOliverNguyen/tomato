@@ -40,6 +40,7 @@ var (
 	Icon1, Icon2, UUID, URL string
 	Icon1Data, Icon2Data    string
 	Command                 string
+	CommandOnStart          string
 	CommandAsync            bool
 
 	httpClient = http.Client{Timeout: 200 * time.Millisecond}
@@ -75,6 +76,7 @@ Options:
 	flag.StringVar(&Icon1, "icon1", "", "Icon for work (default red)")
 	flag.StringVar(&Icon2, "icon2", "", "Icon for break session (default green)")
 	flag.StringVar(&Command, "command", "", "Execute command at the end of timer")
+	flag.StringVar(&CommandOnStart, "start-command", "", "Execute command on start of timer")
 	flag.StringVar(&UUID, "uuid", "", "UUID of the widget")
 	flag.BoolVar(&CommandAsync, "async", false, "Execute the command without waiting it to finish (use together with -command)")
 
@@ -239,11 +241,13 @@ func (s *Server) ActionStart(w http.ResponseWriter, r *http.Request) {
 		t := now.Add(s.mode.Duration())
 		s.t = t
 		s.state = StateRunning
+		s.executeCommandOnStart()
 
 	case StatePaused:
 		t := now.Add(s.d)
 		s.t = t
 		s.state = StateRunning
+		s.executeCommandOnStart()
 
 	case StateRunning:
 		s.RefreshStatus(true)
@@ -316,6 +320,40 @@ func (s *Server) executeCommand() {
 	}
 
 	cmd := exec.Command("/bin/sh", "-c", Command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	var err error
+	if CommandAsync {
+		log.Println("Executing command (without waiting it to finish)...")
+		err = cmd.Start()
+		if err == nil {
+			go func() {
+				err2 := cmd.Wait()
+				if err2 != nil {
+					printCommandError(err)
+				} else {
+					log.Println("Command executed")
+				}
+			}()
+		}
+	} else {
+		err = cmd.Run()
+		if err == nil {
+			log.Println("Command executed")
+		}
+	}
+	if err != nil {
+		printCommandError(err)
+	}
+}
+
+func (s *Server) executeCommandOnStart() {
+	if CommandOnStart == "" {
+		return
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", CommandOnStart)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
